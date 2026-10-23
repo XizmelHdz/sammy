@@ -1,6 +1,6 @@
 /// Representa un producto dentro de las reglas de negocio de la app.
 /// No sabe nada de bases de datos, APIs ni de Flutter.
-class Producto {
+class Productos {
   final int? id;
   final String nombre;
   final double precio;
@@ -10,7 +10,7 @@ class Producto {
   final bool disponible;
   final int idUsuario; // dueño del producto
 
-  const Producto({
+  const Productos({
     this.id,
     required this.nombre,
     required this.precio,
@@ -21,9 +21,9 @@ class Producto {
     required this.idUsuario,
   });
 
-  /// Crea un Producto a partir del JSON que devuelve la API.
-  factory Producto.fromJson(Map<String, dynamic> json) {
-    return Producto(
+  /// Crea un Productos a partir del JSON que devuelve la API (server.js).
+  factory Productos.fromJson(Map<String, dynamic> json) {
+    return Productos(
       id: json['id_producto'],
       nombre: json['nombre'] ?? '',
       // precio puede venir como int, double, num o incluso String
@@ -49,7 +49,7 @@ class Producto {
   }
 
   /// Copia el producto cambiando solo algunos campos (útil para editar).
-  Producto copyWith({
+  Productos copyWith({
     int? id,
     String? nombre,
     double? precio,
@@ -59,7 +59,7 @@ class Producto {
     bool? disponible,
     int? idUsuario,
   }) {
-    return Producto(
+    return Productos(
       id: id ?? this.id,
       nombre: nombre ?? this.nombre,
       precio: precio ?? this.precio,

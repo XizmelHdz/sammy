@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,6 +11,8 @@ import '../../core/widgets/auth_card.dart';
 import '../../core/widgets/error_banner.dart';
 import '../../core/widgets/gradient_background.dart';
 import '../../core/widgets/gradient_button.dart';
+import '../../domain/entities/usuario.dart';
+
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});

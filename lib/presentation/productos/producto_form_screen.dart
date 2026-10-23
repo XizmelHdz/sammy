@@ -13,23 +13,25 @@ import '../../core/widgets/auth_card.dart';
 import '../../core/widgets/error_banner.dart';
 import '../../core/widgets/gradient_background.dart';
 import '../../core/widgets/gradient_button.dart';
-
+import '../../domain/entities/productos.dart'; // Asegúrate que la clase se llame Productos
+import '../../domain/entities/usuario.dart';
 
 class ProductoFormScreen extends StatefulWidget {
-  /// Si viene null → modo "crear".
-  /// Si viene con datos → modo "editar".
- final Productos? producto;
+  final Productos? producto;
   final int idUsuario;
 
   const ProductoFormScreen({
     super.key,
-    this.producto,
-    required this.idUsuario,
-  });
-
+    this.producto,  required this.idUsuario,});
   @override
   State<ProductoFormScreen> createState() => _ProductoFormScreenState();
 }
+
+
+
+
+
+
 
 class _ProductoFormScreenState extends State<ProductoFormScreen> {
   final TextEditingController _nombreController = TextEditingController();
@@ -41,9 +43,7 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  /// Archivo de imagen seleccionado (solo para móvil/desktop).
   File? _imagenSeleccionada;
-
   final ImagePicker _picker = ImagePicker();
 
   bool get _esEdicion => widget.producto != null;
@@ -95,7 +95,6 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
     final categoria = _categoriaController.text.trim();
     final descripcion = _descripcionController.text.trim();
 
-    // Validaciones en cliente
     if (nombre.isEmpty || precioTexto.isEmpty) {
       setState(() => _errorMessage = 'Nombre y precio son obligatorios.');
       return;
@@ -113,7 +112,6 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
     });
 
     try {
-      // Construimos la petición multipart porque enviamos archivo + campos
       final Uri url = _esEdicion
           ? Uri.parse('$hostUrl/api/productos/${widget.producto!.id}')
           : Uri.parse('$hostUrl/api/productos');
@@ -125,7 +123,11 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
       request.fields['categoria'] = categoria;
       request.fields['descripcion'] = descripcion;
       request.fields['disponible'] = _disponible.toString();
-      request.fields['id_usuario'] = widget.idUsuario.toString();
+      
+      // Solo enviamos el id_usuario si es un producto nuevo
+      if (!_esEdicion) {
+        request.fields['id_usuario'] = widget.idUsuario.toString();
+      }
 
       if (_imagenSeleccionada != null) {
         request.files.add(
@@ -136,35 +138,64 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
         );
       }
 
-      debugPrint('${_esEdicion ? "PUT" : "POST"} -> $url');
-
-      final streamed = await request.send().timeout(
-            const Duration(seconds: 30),
-          );
+      final streamed = await request.send().timeout(const Duration(seconds: 30));
       final response = await http.Response.fromStream(streamed);
-
-      debugPrint('STATUS -> ${response.statusCode}');
-      debugPrint('BODY -> ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         if (!mounted) return;
         Navigator.pop(
           context,
-          _esEdicion
-              ? '¡Producto actualizado con éxito!'
-              : '¡Producto creado con éxito!',
+          _esEdicion ? '¡Producto actualizado con éxito!' : '¡Producto creado con éxito!',
         );
       } else {
         String mensaje = 'No se pudo guardar el producto.';
         try {
           final json = jsonDecode(response.body) as Map<String, dynamic>;
-          mensaje = json['message'] ?? mensaje;
+          mensaje = json['message'] ?? json['error'] ?? mensaje;
         } catch (_) {}
         setState(() => _errorMessage = mensaje);
       }
-    } catch (e, st) {
-      debugPrint('ERROR GUARDAR PRODUCTO -> $e');
-      debugPrint('STACK -> $st');
+    } catch (e) {
+      setState(() => _errorMessage = 'Error de conexión: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _eliminarProducto() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Eliminar producto?'),
+        content: const Text('Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.delete(
+        Uri.parse('$hostUrl/api/productos/${widget.producto!.id}'),
+      );
+
+      if (response.statusCode == 200) {
+        if (!mounted) return;
+        Navigator.pop(context, '¡Producto eliminado con éxito!');
+      } else {
+        setState(() => _errorMessage = 'No se pudo eliminar el producto.');
+      }
+    } catch (e) {
       setState(() => _errorMessage = 'Error de conexión: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -191,10 +222,7 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
               Expanded(
                 child: Center(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 10,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 400),
                       child: Column(
@@ -208,24 +236,15 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
                               color: Colors.black,
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '🎁 Completa los datos del regalo',
-                            style: GoogleFonts.nunito(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black.withOpacity(0.75),
-                            ),
-                          ),
                           const SizedBox(height: 24),
                           AuthCard(
                             child: Column(
                               children: [
-                                // Selector de imagen
+                                // Selector / Vista previa de imagen
                                 GestureDetector(
                                   onTap: _seleccionarImagen,
                                   child: Container(
-                                    height: 140,
+                                    height: 160,
                                     width: double.infinity,
                                     decoration: BoxDecoration(
                                       color: AppColors.hotPink.withOpacity(0.08),
@@ -234,100 +253,62 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
                                         color: AppColors.hotPink.withOpacity(0.3),
                                       ),
                                     ),
-                                    child: _imagenSeleccionada != null
-                                        ? ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(16),
-                                            child: Image.file(
-                                              _imagenSeleccionada!,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          )
-                                        : Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Icon(
-                                                Icons.add_photo_alternate_outlined,
-                                                size: 42,
-                                                color: AppColors.hotPink,
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                'Toca para elegir una imagen',
-                                                style: GoogleFonts.nunito(
-                                                  fontWeight: FontWeight.w700,
-                                                  color: AppColors.ink,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: _imagenSeleccionada != null
+                                          // 1. Si el usuario eligió una nueva imagen
+                                          ? Image.file(_imagenSeleccionada!, fit: BoxFit.cover)
+                                          // 2. Si estamos editando y ya hay foto en el servidor
+                                          : (_esEdicion && widget.producto?.foto != null)
+                                              ? Image.network(widget.producto!.foto!, fit: BoxFit.cover)
+                                          // 3. Si no hay imagen
+                                              : Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(Icons.add_photo_alternate_outlined, size: 42, color: AppColors.hotPink),
+                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                      'Toca para elegir una imagen',
+                                                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.ink),
+                                                    ),
+                                                  ],
                                                 ),
-                                              ),
-                                            ],
-                                          ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 18),
                                 TextField(
                                   controller: _nombreController,
-                                  style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
-                                  ),
-                                  decoration: buildFieldDecoration(
-                                    'Nombre',
-                                    Icons.card_giftcard,
-                                  ),
+                                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.ink),
+                                  decoration: buildFieldDecoration('Nombre', Icons.card_giftcard),
                                 ),
                                 const SizedBox(height: 14),
                                 TextField(
                                   controller: _precioController,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                                  style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
-                                  ),
-                                  decoration: buildFieldDecoration(
-                                    'Precio',
-                                    Icons.attach_money,
-                                  ),
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.ink),
+                                  decoration: buildFieldDecoration('Precio', Icons.attach_money),
                                 ),
                                 const SizedBox(height: 14),
                                 TextField(
                                   controller: _categoriaController,
-                                  style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
-                                  ),
-                                  decoration: buildFieldDecoration(
-                                    'Categoría',
-                                    Icons.category_outlined,
-                                  ),
+                                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.ink),
+                                  decoration: buildFieldDecoration('Categoría', Icons.category_outlined),
                                 ),
                                 const SizedBox(height: 14),
                                 TextField(
                                   controller: _descripcionController,
                                   maxLines: 3,
-                                  style: GoogleFonts.nunito(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
-                                  ),
-                                  decoration: buildFieldDecoration(
-                                    'Descripción',
-                                    Icons.description_outlined,
-                                  ),
+                                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.ink),
+                                  decoration: buildFieldDecoration('Descripción', Icons.description_outlined),
                                 ),
                                 const SizedBox(height: 14),
                                 SwitchListTile(
                                   value: _disponible,
-                                  onChanged: (v) =>
-                                      setState(() => _disponible = v),
+                                  onChanged: (v) => setState(() => _disponible = v),
                                   title: Text(
                                     'Disponible',
-                                    style: GoogleFonts.nunito(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.ink,
-                                    ),
+                                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: AppColors.ink),
                                   ),
                                   activeColor: AppColors.hotPink,
                                   contentPadding: EdgeInsets.zero,
@@ -335,12 +316,22 @@ class _ProductoFormScreenState extends State<ProductoFormScreen> {
                                 ErrorBanner(message: _errorMessage),
                                 const SizedBox(height: 20),
                                 GradientButton(
-                                  label: _esEdicion
-                                      ? 'Guardar cambios'
-                                      : 'Crear producto',
+                                  label: _esEdicion ? 'Guardar cambios' : 'Crear producto',
                                   onPressed: _guardar,
                                   isLoading: _isLoading,
                                 ),
+                                // Botón de eliminar (solo en modo edición)
+                                if (_esEdicion) ...[
+                                  const SizedBox(height: 12),
+                                  TextButton.icon(
+                                    onPressed: _isLoading ? null : _eliminarProducto,
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                    label: Text(
+                                      'Eliminar producto',
+                                      style: GoogleFonts.nunito(color: Colors.red, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ]
                               ],
                             ),
                           ),

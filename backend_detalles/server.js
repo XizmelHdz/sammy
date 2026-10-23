@@ -36,6 +36,49 @@ app.get('/imagenes/:filename', (req, res) => {
         return res.sendFile(fileEntry);
     });
 });
+
+
+
+// ============================================
+// LOGIN Y REGISTRO (tablas: usuarios + roles)
+// ============================================
+app.post('/api/login', async (req, res) => {
+    try {
+        const { correo, contrasena } = req.body;
+        const query = `
+            SELECT u.id_usuario, u.nombre, u.correo, r.nombre_rol AS rol
+            FROM usuarios u
+            JOIN roles r ON u.id_rol = r.id_rol
+            WHERE u.correo = $1 AND u.contrasena = $2;
+        `;
+        const resultado = await pool.query(query, [correo, contrasena]);
+
+        if (resultado.rows.length === 0) {
+            return res.status(401).json({ status: 'error', message: 'Correo o contraseña incorrectos' });
+        }
+        res.json({ status: 'ok', usuario: resultado.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/register', async (req, res) => {
+    try {
+        const { nombre, correo, contrasena, id_rol } = req.body;
+        const query = `
+            INSERT INTO usuarios (nombre, correo, contrasena, id_rol)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id_usuario, nombre, correo;
+        `;
+        const resultado = await pool.query(query, [nombre, correo, contrasena, id_rol]);
+        res.status(201).json({ status: 'ok', usuario: resultado.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ status: 'error', message: 'Ese correo ya está registrado' });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
 // Configuración de conexión a PostgreSQL — base de datos: detalles_sammy
 const pool = new Pool({
     user: 'postgres',
